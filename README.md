@@ -14,7 +14,7 @@ MCP client ──stdio──▶ docker exec -i blender-mcp mcp-for-blender
 
 - **No GPU needed** — llvmpipe software GL (Xvfb + Mesa) powers the UI/screenshots; Cycles renders on CPU
 - **Zero network exposure** — port 9876 only listens on container-internal localhost
-- **Self-healing** — `--restart=always` recovers from real process crashes; autosave restores the scene from `/work`
+- **Self-healing** — `--restart=unless-stopped` recovers from real process crashes while keeping manual stops down across host reboots; autosave restores the scene from `/work`
 - **Persistent scene** — bind-mount a host dir to `/work` so image/container rebuilds never lose your project
 
 ## Build
@@ -26,24 +26,28 @@ docker build -t blender-mcp:5.2.2 .
 ## Run
 
 ```bash
-mkdir -p /home/coder/belender   # host dir; visible as /root/belender if your workspace /root is /home/coder
-docker run -d --name blender-mcp --restart=always \
+mkdir -p /home/coder/blender/belend   # host dir; visible as /root/blender/belend if your workspace /root is /home/coder
+docker run -d --name blender-mcp --restart=unless-stopped \
   --memory=3072m --memory-swap=-1 \
-  -v /home/coder/belender:/work \
+  -v /home/coder/blender/belend:/work \
   blender-mcp:5.2.2
 docker exec blender-mcp sh -c 'grep -q ":2694" /proc/net/tcp && echo PORT_UP'   # addon up?
 ```
 
 ## Connect from OpenClaw
 
-`mcp.servers.blender`:
+`mcp.servers.blender` — the command is the auto-wake wrapper: it silently ensures the stack (recreates a deleted container / starts a stopped one / waits for the addon port) before exec'ing the MCP server:
 
 ```json
-{ "enabled": true, "command": "docker",
-  "args": ["exec", "-i", "blender-mcp", "/root/.local/bin/mcp-for-blender"],
+{ "enabled": true, "command": "/root/blender/blender-mcp-docker/blender-mcp-wrapper.sh",
+  "args": [],
   "env": { "DISABLE_TELEMETRY": "true" },
   "transport": "stdio", "name": "blender" }
 ```
+
+On-demand mode: `docker stop blender-mcp` when idle (manual stops survive daemon/host restarts under `unless-stopped`); the next MCP tool call wakes the whole stack automatically (~20–25 s cold).
+
+To disable the stack entirely — so that even an MCP tool call or a gateway probe cannot start the container — create the hard-off flag: `touch DISABLED` (both `blender-ensure.sh` and `blender-mcp-wrapper.sh` refuse to act while it exists; the wrapper exits silently so MCP clients see an immediate EOF). Remove the flag and run `blender-ensure.sh` to bring the stack back. The flag is local runtime state and is git-ignored.
 
 ## Notes
 
@@ -60,3 +64,6 @@ docker exec blender-mcp sh -c 'grep -q ":2694" /proc/net/tcp && echo PORT_UP'   
 | `enable.py` | one-shot addon enable during image build (`blender -b`) |
 | `autosave.py` | bpy timer saving `/work/workspace.blend` every 600s |
 | `start.sh` | Xvfb :99 → Blender GUI → addon binds 9876 (PID 1 is Blender) |
+| `blender-ensure.sh` | idempotent stack ensure: recreate deleted container (unless-stopped, original flags) / start stopped / wait for 9876 |
+| `blender-mcp-wrapper.sh` | MCP command wrapper: silent ensure, then `docker exec -i` mcp-for-blender (auto-wake on every tool call) |
+| `mcp-probe.mjs` | full-chain protocol probe: initialize → tools/list → tools/call with stdin held open (verification) |
