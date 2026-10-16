@@ -1,6 +1,6 @@
 # blender-mcp-docker
 
-Headless Docker image running **Blender 5.2.2 LTS** + [mcp-for-blender](https://github.com/ahujasid/blender-mcp) (v2.1.0), designed to be driven by an [OpenClaw](https://github.com/openclaw/openclaw) agent over MCP stdio — or any MCP client that can run `docker exec`.
+Headless Docker image running **Blender 5.2.2 LTS** + [mcp-for-blender](https://github.com/ahujasid/blender-mcp) (v2.1.0) — a self-waking **stdio MCP server that any MCP-capable AI agent tool can drive**. The only client requirement is the ability to spawn a stdio command; the bundled wrapper handles the `docker exec` into the container.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ docker build -t blender-mcp:5.2.2 .
 ## Run
 
 ```bash
-mkdir -p /home/coder/blender/belend   # host dir; visible as /root/blender/belend if your workspace /root is /home/coder
+mkdir -p /home/coder/blender/belend   # host dir as the Docker daemon sees it (a containerized client's /root/blender/belend may map to this)
 docker run -d --name blender-mcp --restart=unless-stopped \
   --memory=3072m --memory-swap=-1 \
   -v /home/coder/blender/belend:/work \
@@ -34,20 +34,29 @@ docker run -d --name blender-mcp --restart=unless-stopped \
 docker exec blender-mcp sh -c 'grep -q ":2694" /proc/net/tcp && echo PORT_UP'   # addon up?
 ```
 
-## Connect from OpenClaw
+## Connect from any MCP client
 
-`mcp.servers.blender` — the command is the auto-wake wrapper: it silently ensures the stack (recreates a deleted container / starts a stopped one / waits for the addon port) before exec'ing the MCP server:
+Register the auto-wake wrapper as a stdio MCP server named `blender`. On every tool call it silently ensures the stack (recreates a deleted container / starts a stopped one / waits for the addon port) before exec'ing the MCP server inside the container.
+
+Most desktop/editor clients (Claude Desktop, Cursor, Cline, VS Code, …) take an `mcpServers` JSON entry:
 
 ```json
-{ "enabled": true, "command": "/root/blender/blender-mcp-docker/blender-mcp-wrapper.sh",
-  "args": [],
-  "env": { "DISABLE_TELEMETRY": "true" },
-  "transport": "stdio", "name": "blender" }
+{
+  "mcpServers": {
+    "blender": {
+      "command": "/root/blender/blender-mcp-docker/blender-mcp-wrapper.sh",
+      "args": [],
+      "env": { "DISABLE_TELEMETRY": "true" }
+    }
+  }
+}
 ```
+
+CLI-style clients take the same path as the server command, e.g. `claude mcp add blender -- /root/blender/blender-mcp-docker/blender-mcp-wrapper.sh`. Transport is always stdio — no URL or port to configure; if your client exposes a `type`/`transport` field, set it to `stdio` (the default for command-based servers).
 
 On-demand mode: `docker stop blender-mcp` when idle (manual stops survive daemon/host restarts under `unless-stopped`); the next MCP tool call wakes the whole stack automatically (~20–25 s cold).
 
-To disable the stack entirely — so that even an MCP tool call or a gateway probe cannot start the container — create the hard-off flag: `touch DISABLED` (both `blender-ensure.sh` and `blender-mcp-wrapper.sh` refuse to act while it exists; the wrapper exits silently so MCP clients see an immediate EOF). Remove the flag and run `blender-ensure.sh` to bring the stack back. The flag is local runtime state and is git-ignored.
+To disable the stack entirely — so that even an MCP tool call or a client liveness probe cannot start the container — create the hard-off flag: `touch DISABLED` (both `blender-ensure.sh` and `blender-mcp-wrapper.sh` refuse to act while it exists; the wrapper exits silently so MCP clients see an immediate EOF). Remove the flag and run `blender-ensure.sh` to bring the stack back. The flag is local runtime state and is git-ignored.
 
 ## Notes
 

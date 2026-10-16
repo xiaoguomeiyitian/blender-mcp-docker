@@ -1,6 +1,6 @@
 #!/bin/sh
 # blender-mcp-wrapper.sh — blender MCP 服务器的自动唤醒包装器(2026-10-09)
-# 作为 mcp.servers.blender 的 command 使用:每次 MCP 工具调用都会先确保
+# 作为 MCP 客户端配置里 blender 服务器的 command 使用:每次 MCP 工具调用都会先确保
 # blender-mcp 容器存在且就绪(被删→重建 / 停了→启动 / 端口未就绪→等待),
 # 再把 stdio 转接给容器内的 mcp-for-blender。
 # 输出纪律:ensure 阶段必须完全静默 —— MCP JSON-RPC 走 stdout,一个字节都不能污染。
