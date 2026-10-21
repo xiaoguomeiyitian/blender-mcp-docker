@@ -4,7 +4,8 @@
 // 验证链:wrapper 启动 → initialize → tools/list → tools/call get_scene_info(真实场景数据)
 import { spawn } from 'node:child_process';
 
-const WRAP = '/root/blender/blender-mcp-docker/blender-mcp-wrapper.sh';
+// 默认走 blender-mcp-wrapper.sh(通用 MCP 通道);argv[2] 或 MCP_WRAPPER 可覆盖。
+const WRAP = process.argv[2] || process.env.MCP_WRAPPER || '/root/blender/blender-mcp-docker/blender-mcp-wrapper.sh';
 const T0 = Date.now();
 const el = () => ((Date.now() - T0) / 1000).toFixed(1) + 's';
 
